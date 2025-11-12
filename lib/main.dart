@@ -31,6 +31,7 @@ class _MyHomePagesState extends State<MyHomePages> {
   Position? _currentPosition;
   String? _errorMessage;
   String? _currentAddress;
+  double? _distanceInMeters;
 
   final double _pnbLatitude = 1.4966;
   final double _pnbLongitude = 124.8483;
@@ -61,7 +62,8 @@ class _MyHomePagesState extends State<MyHomePages> {
     }
 
     if (permission == LocationPermission.deniedForever) {
-      throw Exception('Izin lokasi ditolak permanen. Silakan ubah di pengaturan HP.');
+      throw Exception(
+          'Izin lokasi ditolak permanen. Silakan ubah di pengaturan HP.');
     }
 
     return await Geolocator.getCurrentPosition(
@@ -76,7 +78,11 @@ class _MyHomePagesState extends State<MyHomePages> {
         _currentPosition = position;
         _errorMessage = null;
       });
+
+      // panggil fungsi baru setelah dapat lokasi
       _getAddressFromLatLng(position);
+      _calculateDistance(position);
+
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceFirst("Exception: ", "");
@@ -97,17 +103,23 @@ class _MyHomePagesState extends State<MyHomePages> {
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
       ),
-    ).listen((Position position) {
-      setState(() {
-        _currentPosition = position;
-        _errorMessage = null;
-      });
-      _getAddressFromLatLng(position);
-    }, onError: (error) {
-      setState(() {
-        _errorMessage = error.toString();
-      });
-    });
+    ).listen(
+      (Position position) {
+        setState(() {
+          _currentPosition = position;
+          _errorMessage = null;
+        });
+
+        // memanggil fungsi baru di dalam stream
+        _getAddressFromLatLng(position);
+        _calculateDistance(position);
+      },
+      onError: (error) {
+        setState(() {
+          _errorMessage = error.toString();
+        });
+      },
+    );
 
     setState(() {
       _errorMessage = "Pelacakan dimulai...";
@@ -117,12 +129,12 @@ class _MyHomePagesState extends State<MyHomePages> {
   void _handleStopTracking() {
     _positionStreamSubscription?.cancel();
     _positionStreamSubscription = null;
-
     setState(() {
       _errorMessage = "Pelacakan dihentikan.";
     });
   }
 
+  // geocoding
   Future<void> _getAddressFromLatLng(Position position) async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -134,20 +146,34 @@ class _MyHomePagesState extends State<MyHomePages> {
 
       setState(() {
         _currentAddress =
-            "${place.street}, ${place.subLocality}, ${place.locality}, ${place.postalCode}, ${place.country}";
+            "${place.street}, ${place.subLocality}, ${place.locality}, ${place.country}";
       });
     } catch (e) {
       setState(() {
-        _currentAddress = "Tidak dapat mengambil alamat: ${e.toString()}";
+        _currentAddress = "Tidak dapat mengambil alamat.";
       });
     }
+  }
+
+  // fungsi jarak ke PNB
+  void _calculateDistance(Position position) {
+    double distance = Geolocator.distanceBetween(
+      _pnbLatitude,
+      _pnbLongitude,
+      position.latitude,
+      position.longitude,
+    );
+
+    setState(() {
+      _distanceInMeters = distance;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Praktikum Geolocator (Geocoding)"),
+        title: const Text("Geolocator (Alamat & Jarak)"),
       ),
       body: Center(
         child: Padding(
@@ -169,28 +195,44 @@ class _MyHomePagesState extends State<MyHomePages> {
                           style: const TextStyle(color: Colors.red, fontSize: 16),
                           textAlign: TextAlign.center,
                         ),
+                      
                       const SizedBox(height: 16),
+
                       if (_currentPosition != null)
                         Text(
-                          "Lat: ${_currentPosition!.latitude}\nLng: ${_currentPosition!.longitude}",
+                          "Lat: ${_currentPosition!.latitude.toStringAsFixed(4)}\nLng: ${_currentPosition!.longitude.toStringAsFixed(4)}",
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                      const SizedBox(height: 8),
+                      
+                      const SizedBox(height: 10),
+
                       if (_currentAddress != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Text(
-                            "Alamat:\n$_currentAddress",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 16),
+                        Text(
+                          "Alamat:\n$_currentAddress",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      
+                      const SizedBox(height: 10),
+
+                      if (_distanceInMeters != null)
+                        Text(
+                          "Jarak ke PNB: ${_distanceInMeters!.toStringAsFixed(2)} meter",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.purple,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                     ],
                   ),
                 ),
+                
                 const SizedBox(height: 32),
+
                 ElevatedButton.icon(
                   icon: const Icon(Icons.location_searching),
                   label: const Text('Dapatkan Lokasi Sekarang'),
@@ -214,8 +256,8 @@ class _MyHomePagesState extends State<MyHomePages> {
                       icon: const Icon(Icons.stop),
                       label: const Text('Henti Lacak'),
                       onPressed: _handleStopTracking,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red),
+                      style:
+                          ElevatedButton.styleFrom(backgroundColor: Colors.red),
                     ),
                   ],
                 ),
